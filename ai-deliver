@@ -1,0 +1,476 @@
+#!/usr/bin/env bash
+# ai-deliver - AI 自主交付系统主入口命令
+
+set -euo pipefail
+
+# 版本
+VERSION="1.0.0"
+
+# 获取脚本目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
+
+# 配置
+WORKFLOWS_DIR="${PROJECT_ROOT}/workflows"
+CONTEXT_DIR="${PROJECT_ROOT}/context"
+MEMORY_DIR="${PROJECT_ROOT}/memory"
+DELIVER_DIR="${PROJECT_ROOT}/deliver"
+LESSONS_FILE="${PROJECT_ROOT}/lessons.md"
+
+# 导出配置供子脚本使用
+export PROJECT_ROOT
+export WORKFLOWS_DIR
+export CONTEXT_DIR
+export MEMORY_DIR
+export PROMPTS_DIR="${PROJECT_ROOT}/prompts"
+export DELIVER_DIR
+export LESSONS_FILE
+
+# ========================================
+# 工具函数
+# ========================================
+
+show_banner() {
+    cat <<'EOF'
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║         AI 自主交付系统 v1.0                               ║
+║         Five-Phase AI Delivery System                      ║
+║                                                            ║
+║         发现 → 规划 → 构建 → 打磨 → 交付                    ║
+║         Discover → Plan → Build → Polish → Deliver        ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+EOF
+}
+
+show_version() {
+    echo "AI 自主交付系统 v${VERSION}"
+}
+
+show_usage() {
+    cat <<EOF
+用法: ai-deliver <命令> [选项]
+
+命令:
+    init            初始化新项目（创建 context 文件）
+    run             运行完整五阶段流程
+    discover        只运行发现阶段
+    plan            只运行规划阶段
+    build           只运行构建阶段
+    polish          只运行打磨阶段
+    deliver         只运行交付阶段
+    status          显示项目状态
+    memory          操作项目记忆
+    lessons         操作经验教训
+    clean           清理项目文件
+    help            显示此帮助信息
+
+选项:
+    -p, --project PATH    指定项目路径
+    -s, --start PHASE     从指定阶段开始
+    -y, --yes             自动确认（非交互模式）
+    -v, --version         显示版本信息
+
+完整流程:
+    ai-deliver run                    # 运行完整五阶段流程
+    ai-deliver run -p /path/to/proj   # 从现有项目开始
+    ai-deliver run -s plan            # 从规划阶段开始
+    ai-deliver run -y                 # 自动确认模式
+
+单阶段运行:
+    ai-deliver discover               # 只运行发现阶段
+    ai-deliver plan                   # 只运行规划阶段
+    ai-deliver build                  # 只运行构建阶段
+    ai-deliver polish                 # 只运行打磨阶段
+    ai-deliver deliver                # 只运行交付阶段
+
+项目管理:
+    ai-deliver init                   # 初始化新项目
+    ai-deliver status                 # 显示当前状态
+    ai-deliver memory show            # 显示项目记忆
+    ai-deliver lessons show           # 显示经验教训
+
+文档:
+    https://github.com/your-repo/ai-deliver
+EOF
+}
+
+log_info() {
+    echo "[INFO] $*"
+}
+
+log_error() {
+    echo "[ERROR] $*" >&2
+}
+
+log_success() {
+    echo "[SUCCESS] $*"
+}
+
+# ========================================
+# 命令函数
+# ========================================
+
+# 初始化新项目
+cmd_init() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  初始化新项目"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # 创建 context 目录
+    mkdir -p "${CONTEXT_DIR}"
+
+    # 检查是否已有文件
+    if [[ -f "${CONTEXT_DIR}/project.md" ]]; then
+        log_warning "Context 文件已存在"
+        read -p "是否覆盖? [y/N] " -n 1 -r response
+        echo ""
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            log_info "取消初始化"
+            return 0
+        fi
+    fi
+
+    # 复制模板
+    if [[ -d "${CONTEXT_DIR}/templates" ]]; then
+        cp "${CONTEXT_DIR}/templates/"*.md "${CONTEXT_DIR}/" 2>/dev/null || true
+        log_success "Context 模板已创建"
+    else
+        # 创建基本文件
+        cat > "${CONTEXT_DIR}/project.md" <<'EOF'
+# 项目概述
+
+## 项目名称
+[项目名称]
+
+## 项目描述
+[用1-2段话描述这个项目]
+
+## 目标用户
+[谁会使用这个项目]
+
+## 项目状态
+- [ ] 从零开始
+- [ ] 已有代码，需要添加功能
+- [ ] 已有代码，需要修复bug
+- [ ] 已有代码，需要重构
+
+## 现有代码路径（如果适用）
+```
+[path/to/existing/project]
+```
+EOF
+        log_info "已创建基本 context 文件"
+    fi
+
+    echo ""
+    echo "下一步:"
+    echo "  1. 编辑 context/project.md     - 填写项目概述"
+    echo "  2. 编辑 context/requirements.md - 填写需求文档"
+    echo "  3. 编辑 context/constraints.md - 填写约束条件"
+    echo "  4. 运行: ai-deliver run"
+    echo ""
+}
+
+# 运行完整流程
+cmd_run() {
+    local project_path=""
+    local start_from=""
+    local auto_confirm=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -p|--project)
+                project_path="$2"
+                shift 2
+                ;;
+            -s|--start)
+                start_from="$2"
+                shift 2
+                ;;
+            -y|--yes)
+                auto_confirm=true
+                export AUTO_CONFIRM="true"
+                shift
+                ;;
+            *)
+                log_error "未知选项: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    bash "${WORKFLOWS_DIR}/full-pipeline.sh" "$project_path" "$start_from"
+}
+
+# 运行单个阶段
+cmd_phase() {
+    local phase="$1"
+    shift
+
+    local phase_script="${WORKFLOWS_DIR}/${phase}.sh"
+
+    if [[ ! -f "$phase_script" ]]; then
+        log_error "阶段脚本不存在: ${phase_script}"
+        exit 1
+    fi
+
+    bash "$phase_script" "$@"
+}
+
+# 显示状态
+cmd_status() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  项目状态"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    # 检查 state.json
+    if [[ -f "${MEMORY_DIR}/state.json" ]]; then
+        local project_id=$(jq -r '.project_id' "${MEMORY_DIR}/state.json" 2>/dev/null || echo "未知")
+        local current_phase=$(jq -r '.current_phase' "${MEMORY_DIR}/state.json" 2>/dev/null || echo "未知")
+        local created_at=$(jq -r '.created_at' "${MEMORY_DIR}/state.json" 2>/dev/null || echo "未知")
+
+        echo "项目信息:"
+        echo "  项目ID: ${project_id}"
+        echo "  创建时间: ${created_at}"
+        echo "  当前阶段: ${current_phase}"
+        echo ""
+    fi
+
+    # 检查 context
+    echo "Context 文件:"
+    if [[ -d "${CONTEXT_DIR}" ]]; then
+        for file in "${CONTEXT_DIR}"/*.md; do
+            if [[ -f "$file" ]]; then
+                local name=$(basename "$file")
+                local size=$(wc -c < "$file" 2>/dev/null || echo "0")
+                echo "  ${name}: ${size} 字节"
+            fi
+        done
+    else
+        echo "  (不存在，运行 'ai-deliver init' 创建)"
+    fi
+    echo ""
+
+    # 检查 memory
+    echo "Memory 文件:"
+    if [[ -d "${MEMORY_DIR}" ]]; then
+        for file in "${MEMORY_DIR}"/*.md; do
+            if [[ -f "$file" ]]; then
+                local name=$(basename "$file")
+                local size=$(wc -c < "$file" 2>/dev/null || echo "0")
+                echo "  ${name}: ${size} 字节"
+            fi
+        done
+    else
+        echo "  (尚未生成)"
+    fi
+    echo ""
+
+    # 检查 deliver
+    echo "交付物:"
+    if [[ -d "${DELIVER_DIR}" ]]; then
+        local code_count=$(find "${DELIVER_DIR}/code" -type f 2>/dev/null | wc -l || echo "0")
+        local docs_count=$(find "${DELIVER_DIR}/docs" -type f 2>/dev/null | wc -l || echo "0")
+        local handoff_count=$(find "${DELIVER_DIR}/handoff" -type f 2>/dev/null | wc -l || echo "0")
+
+        echo "  代码文件: ${code_count}"
+        echo "  文档文件: ${docs_count}"
+        echo "  交接文件: ${handoff_count}"
+    else
+        echo "  (尚未生成)"
+    fi
+    echo ""
+}
+
+# 操作 memory
+cmd_memory() {
+    local action="$1"
+    shift
+
+    case "$action" in
+        show)
+            if [[ -d "${MEMORY_DIR}" ]]; then
+                for file in "${MEMORY_DIR}"/*.md; do
+                    if [[ -f "$file" ]]; then
+                        echo ""
+                        echo "========================================"
+                        echo "文件: $(basename "$file")"
+                        echo "========================================"
+                        cat "$file"
+                    fi
+                done
+            else
+                log_error "Memory 目录不存在"
+            fi
+            ;;
+        clean)
+            read -p "确定要清空 memory 目录? [y/N] " -n 1 -r response
+            echo ""
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                rm -rf "${MEMORY_DIR:?}"/*
+                log_success "Memory 已清空"
+            fi
+            ;;
+        *)
+            echo "用法: ai-deliver memory <show|clean>"
+            ;;
+    esac
+}
+
+# 操作 lessons
+cmd_lessons() {
+    local action="${1:-show}"
+
+    case "$action" in
+        show)
+            if [[ -f "${LESSONS_FILE}" ]]; then
+                cat "${LESSONS_FILE}"
+            else
+                log_info "暂无经验教训记录"
+            fi
+            ;;
+        edit)
+            ${EDITOR:-vi} "${LESSONS_FILE}"
+            ;;
+        *)
+            echo "用法: ai-deliver lessons <show|edit>"
+            ;;
+    esac
+}
+
+# 清理项目
+cmd_clean() {
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  清理项目"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    local clean_memory=false
+    local clean_deliver=false
+    local clean_all=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --memory)
+                clean_memory=true
+                shift
+                ;;
+            --deliver)
+                clean_deliver=true
+                shift
+                ;;
+            --all)
+                clean_all=true
+                shift
+                ;;
+            *)
+                log_error "未知选项: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ "$clean_all" == true ]]; then
+        clean_memory=true
+        clean_deliver=true
+    fi
+
+    if [[ "$clean_memory" == true ]]; then
+        read -p "确定要清空 memory 目录? [y/N] " -n 1 -r response
+        echo ""
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            rm -rf "${MEMORY_DIR:?}"/*
+            log_success "Memory 已清空"
+        fi
+    fi
+
+    if [[ "$clean_deliver" == true ]]; then
+        read -p "确定要清空 deliver 目录? [y/N] " -n 1 -r response
+        echo ""
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            rm -rf "${DELIVER_DIR:?}"/*
+            log_success "Deliver 已清空"
+        fi
+    fi
+
+    if [[ "$clean_memory" == false ]] && [[ "$clean_deliver" == false ]]; then
+        echo "用法: ai-deliver clean [--memory] [--deliver] [--all]"
+    fi
+}
+
+# ========================================
+# 主函数
+# ========================================
+
+main() {
+    # 显示 banner
+    show_banner
+    echo ""
+
+    # 解析命令
+    if [[ $# -eq 0 ]]; then
+        show_usage
+        exit 0
+    fi
+
+    local command="$1"
+    shift
+
+    case "$command" in
+        init)
+            cmd_init
+            ;;
+        run)
+            cmd_run "$@"
+            ;;
+        discover)
+            cmd_phase "01-discover" "$@"
+            ;;
+        plan)
+            cmd_phase "02-plan" "$@"
+            ;;
+        build)
+            cmd_phase "03-build" "$@"
+            ;;
+        polish)
+            cmd_phase "04-polish" "$@"
+            ;;
+        deliver)
+            cmd_phase "05-deliver" "$@"
+            ;;
+        status)
+            cmd_status
+            ;;
+        memory)
+            cmd_memory "$@"
+            ;;
+        lessons)
+            cmd_lessons "$@"
+            ;;
+        clean)
+            cmd_clean "$@"
+            ;;
+        help|--help|-h)
+            show_usage
+            ;;
+        version|--version|-v)
+            show_version
+            ;;
+        *)
+            log_error "未知命令: ${command}"
+            echo ""
+            echo "运行 'ai-deliver help' 查看帮助"
+            exit 1
+            ;;
+    esac
+}
+
+# 执行主函数
+main "$@"
