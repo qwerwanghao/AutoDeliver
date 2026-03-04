@@ -1,10 +1,10 @@
-# AI 自主交付系统
+# AutoDeliver - 五阶段 AI 自主软件交付系统
 
-> 五阶段 AI 自主开发系统 - 从发现到交付全程 AI 参与
+> The 5-Phase AI Autonomous Software Delivery System - 从发现到交付全程 AI 参与
 
 ## 🎯 系统概述
 
-这是一个基于 Claude 和 Codex 的 AI 自主交付系统，实现了 **发现 → 规划 → 构建 → 打磨 → 交付** 的完整开发流程。
+**AutoDeliver** 这是一个基于 Claude 和 Codex 的 AI 自主交付系统，实现了 **发现 → 规划 → 构建 → 打磨 → 交付** 的完整开发流程。它不仅是一个代码生成工具，更是一位具备架构设计和项目管理能力的“AI 技术合伙人”。
 
 ### 核心特点
 
@@ -18,7 +18,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                     AI 自主交付流程                            │
+│                     AutoDeliver 交付流程                       │
 └────────────────────────────────────────────────────────────────┘
 
   ┌──────────┐      ┌──────────┐     ┌──────────┐    ┌──────────┐    ┌──────────┐
@@ -52,8 +52,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-repo/ai-projects.git
-cd ai-projects
+git clone https://github.com/qwerwanghao/AutoDeliver.git
+cd AutoDeliver
 
 # 确保脚本可执行
 chmod +x ai-deliver
@@ -96,7 +96,7 @@ vi context/constraints.md
 ## 📂 项目结构
 
 ```
-ai-projects/
+AutoDeliver/
 ├── ai-deliver              # 主入口命令
 ├── lessons.md              # 跨项目经验教训
 │
